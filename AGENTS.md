@@ -31,7 +31,10 @@ Stack principal:
 Quando o usuário pedir ajuda para configurar o projeto:
 
 1. identifique o sistema operacional;
-2. no Windows, prefira orientar o usuário a executar `setup-windows.cmd`;
+2. use o bootstrap correspondente:
+   - Windows: `setup-windows.cmd`;
+   - Linux: `./setup-linux.sh`;
+   - macOS: `./setup-macos.command`;
 3. em instalação manual, verifique Node.js 20+ e npm 10+;
 4. rode `npm install` se necessário;
 5. rode `npm run doctor`;
@@ -140,3 +143,18 @@ examples/
 ```
 
 antes de exigir mudanças no engine.
+
+
+## Bootstrap multi-OS
+
+Os instaladores Windows, Linux e macOS devem manter comportamento equivalente:
+
+- reutilizar Node.js 20+ / npm 10+ quando disponíveis;
+- preferir runtime portátil em `.tools/node` quando for necessário baixar Node;
+- baixar somente de `nodejs.org`;
+- validar SHA-256 antes de extrair;
+- não preencher credenciais automaticamente;
+- preservar `.env` existente;
+- executar `npm install` e `npm run doctor`.
+
+Ao alterar um bootstrap, avalie se a mesma mudança deve ser aplicada aos outros sistemas operacionais.

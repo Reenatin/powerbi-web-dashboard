@@ -22,37 +22,73 @@ Power BI Semantic Model
 
 O navegador nunca recebe `CLIENT_SECRET`, access token ou DAX arbitrário.
 
-## Instalação rápida no Windows
+## Instalação rápida
 
-No Windows 10/11, depois de clonar ou baixar o repositório, execute:
+Os três sistemas usam a mesma estratégia: reutilizar Node.js 20+ / npm 10+ quando disponíveis ou preparar um **Node.js LTS portátil oficial** dentro de `.tools/node`, sem instalar dependências globalmente.
+
+### Windows 10/11
 
 ```text
 setup-windows.cmd
 ```
 
-O instalador:
-
-- reutiliza Node.js 20+ caso já esteja instalado;
-- se necessário, baixa um **Node.js LTS portátil diretamente do site oficial `nodejs.org`**;
-- valida o SHA-256 do download contra o checksum oficial;
-- mantém esse runtime somente em `.tools/node` — normalmente sem exigir administrador;
-- executa `npm install`;
-- cria `.env` a partir de `.env.example` se ainda não existir;
-- executa `npm run doctor`.
-
-Depois, inicie usando:
+Depois:
 
 ```text
 start-windows.cmd
 ```
 
-e abra:
+Detalhes: [docs/WINDOWS_SETUP.md](docs/WINDOWS_SETUP.md).
+
+### Linux
+
+```bash
+./setup-linux.sh
+```
+
+Depois:
+
+```bash
+./start-linux.sh
+```
+
+Detalhes: [docs/LINUX_SETUP.md](docs/LINUX_SETUP.md).
+
+### macOS — Intel ou Apple Silicon
+
+No Terminal:
+
+```bash
+./setup-macos.command
+```
+
+Depois:
+
+```bash
+./start-macos.command
+```
+
+Os arquivos `.command` também podem ser abertos pelo Finder quando o macOS permitir a execução.
+
+Detalhes: [docs/MACOS_SETUP.md](docs/MACOS_SETUP.md).
+
+### O que os instaladores fazem
+
+- detectam o sistema operacional e a arquitetura;
+- reutilizam Node.js 20+ e npm 10+ se já existirem;
+- caso necessário, selecionam uma release LTS oficial compatível;
+- baixam o runtime diretamente de `nodejs.org`;
+- validam o SHA-256 contra o `SHASUMS256.txt` oficial;
+- mantêm o runtime portátil em `.tools/node`;
+- executam `npm install`;
+- criam `.env` a partir de `.env.example` sem preencher segredos;
+- executam `npm run doctor`.
+
+Depois do start, abra:
 
 ```text
 http://localhost:5173
 ```
-
-Veja os detalhes em [docs/WINDOWS_SETUP.md](docs/WINDOWS_SETUP.md).
 
 ## Requisitos
 
@@ -208,7 +244,7 @@ powerbi-web-dashboard/
 ├── docs/
 ├── scripts/
 │   ├── doctor.mjs
-│   └── setup-windows.ps1
+│   ├── setup-windows.ps1\n│   ├── setup-unix.sh\n│   └── start-unix.sh
 ├── setup-windows.cmd
 ├── start-windows.cmd
 ├── AGENTS.md
@@ -225,7 +261,7 @@ powerbi-web-dashboard/
 - [x] Filtros multi-select e intervalo de datas
 - [x] Estado sem modelo configurado
 - [x] Teste de conexão com Power BI
-- [x] Bootstrap portátil para Windows
+- [x] Bootstrap portátil para Windows, Linux e macOS
 - [ ] Wizard interativo de configuração do Power BI
 - [ ] Descoberta assistida de metadados
 - [ ] Mais layouts de cards
