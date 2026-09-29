@@ -2,6 +2,10 @@
   "name": "powerbi-web-dashboard",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=20",
+    "npm": ">=10"
+  },
   "workspaces": ["apps/api", "apps/web"],
   "scripts": {
     "dev": "concurrently -n API,WEB -c auto \"npm run dev -w apps/api\" \"npm run dev -w apps/web\"",

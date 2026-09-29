@@ -30,14 +30,18 @@ Stack principal:
 
 Quando o usuário pedir ajuda para configurar o projeto:
 
-1. verifique Node/npm;
-2. rode `npm install` se necessário;
-3. rode `npm run doctor`;
-4. ajude a preencher `.env` sem expor segredos;
-5. teste a conexão;
-6. identifique medidas e campos reais do modelo;
-7. configure `config/dashboard.json`;
-8. rode `npm run typecheck` e `npm run build`.
+1. identifique o sistema operacional;
+2. no Windows, prefira orientar o usuário a executar `setup-windows.cmd`;
+3. em instalação manual, verifique Node.js 20+ e npm 10+;
+4. rode `npm install` se necessário;
+5. rode `npm run doctor`;
+6. ajude a preencher `.env` sem expor segredos;
+7. teste a conexão;
+8. identifique medidas e campos reais do modelo;
+9. configure `config/dashboard.json`;
+10. rode `npm run typecheck` e `npm run build`.
+
+Nunca peça credenciais sensíveis em chat se elas puderem ser preenchidas diretamente no `.env`.
 
 ## Configuração do Power BI
 
