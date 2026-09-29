@@ -1,0 +1,10 @@
+{
+  "branding": {
+    "name": "Power BI Web Dashboard",
+    "subtitle": "Bring your own semantic model",
+    "accent": "#0ea5e9"
+  },
+  "filters": [],
+  "cards": [],
+  "charts": []
+}
