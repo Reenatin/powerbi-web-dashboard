@@ -2,6 +2,11 @@
 setlocal
 cd /d "%~dp0"
 
+set "LOCAL_NODE=%~dp0.tools\node"
+if exist "%LOCAL_NODE%\node.exe" (
+  set "PATH=%LOCAL_NODE%;%PATH%"
+)
+
 where npm.cmd >nul 2>nul
 if errorlevel 1 (
   echo npm nao foi encontrado.

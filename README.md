@@ -32,8 +32,10 @@ setup-windows.cmd
 
 O instalador:
 
-- verifica se Node.js 20+ e npm estão disponíveis;
-- instala o **Node.js LTS** via `winget` se necessário;
+- reutiliza Node.js 20+ caso já esteja instalado;
+- se necessário, baixa um **Node.js LTS portátil diretamente do site oficial `nodejs.org`**;
+- valida o SHA-256 do download contra o checksum oficial;
+- mantém esse runtime somente em `.tools/node` — normalmente sem exigir administrador;
 - executa `npm install`;
 - cria `.env` a partir de `.env.example` se ainda não existir;
 - executa `npm run doctor`.
@@ -50,7 +52,7 @@ e abra:
 http://localhost:5173
 ```
 
-> A instalação do Node.js pode solicitar autorização do Windows/UAC. Se `winget` não estiver disponível, consulte [docs/WINDOWS_SETUP.md](docs/WINDOWS_SETUP.md).
+Veja os detalhes em [docs/WINDOWS_SETUP.md](docs/WINDOWS_SETUP.md).
 
 ## Requisitos
 
@@ -158,6 +160,7 @@ Os identificadores de tabela/campo e medidas acima são apenas exemplos. Use os 
 ## Segurança
 
 - `.env` é ignorado pelo Git.
+- `.tools/` é ignorado pelo Git.
 - `CLIENT_SECRET` fica somente no backend.
 - O frontend envia apenas IDs de filtros e valores selecionados.
 - O backend resolve esses IDs contra `dashboard.json`.
@@ -222,7 +225,7 @@ powerbi-web-dashboard/
 - [x] Filtros multi-select e intervalo de datas
 - [x] Estado sem modelo configurado
 - [x] Teste de conexão com Power BI
-- [x] Bootstrap/instalador assistido para Windows
+- [x] Bootstrap portátil para Windows
 - [ ] Wizard interativo de configuração do Power BI
 - [ ] Descoberta assistida de metadados
 - [ ] Mais layouts de cards

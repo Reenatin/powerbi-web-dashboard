@@ -1,16 +1,19 @@
 # Windows Setup
 
-Para Windows 10/11, o projeto inclui um instalador assistido.
+Para Windows 10/11, o projeto inclui um bootstrap assistido.
 
 ## Opção mais simples
 
 Depois de clonar ou baixar o repositório:
 
 1. Execute **`setup-windows.cmd`**.
-2. Se o Node.js não estiver instalado, o script tenta instalar o **Node.js LTS** usando `winget`.
-3. O script executa `npm install`.
-4. Se ainda não existir, cria `.env` a partir de `.env.example`.
-5. Executa `npm run doctor`.
+2. Se já existir Node.js 20+ no computador, ele será reutilizado.
+3. Se não existir, o script baixa um **Node.js LTS portátil diretamente de `nodejs.org`**.
+4. O SHA-256 do arquivo baixado é comparado com o `SHASUMS256.txt` oficial da mesma release.
+5. O runtime é extraído em `.tools/node`, sem precisar ser adicionado permanentemente ao PATH do Windows.
+6. O script executa `npm install`.
+7. Se ainda não existir, cria `.env` a partir de `.env.example`.
+8. Executa `npm run doctor`.
 
 Depois, execute:
 
@@ -18,7 +21,7 @@ Depois, execute:
 start-windows.cmd
 ```
 
-ou, no terminal:
+ou, se você já possui Node/npm instalados globalmente:
 
 ```powershell
 npm run dev
@@ -30,19 +33,21 @@ A aplicação ficará disponível em:
 http://localhost:5173
 ```
 
-## Permissão do Windows
+## Precisa de administrador?
 
-A instalação do Node.js pode abrir uma solicitação do Windows/UAC porque o pacote oficial é instalado na máquina.
+Normalmente, **não**.
 
-## Se o winget não existir
+Quando não encontra um Node.js compatível, o projeto usa uma versão portátil dentro de `.tools/node`. Nada é instalado globalmente no Windows.
 
-O instalador não baixa executáveis de fontes alternativas.
+## Segurança do download
 
-Instale o Node.js LTS pelo site oficial:
+O bootstrap automático usa somente:
 
-https://nodejs.org/en/download
+- `https://nodejs.org/dist/index.json`
+- arquivos de release em `https://nodejs.org/dist/<versão>/`
+- `SHASUMS256.txt` da própria release
 
-Depois execute `setup-windows.cmd` novamente.
+Antes de extrair o pacote, o script valida o SHA-256.
 
 ## Power BI ainda não configurado
 

@@ -3,8 +3,12 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12
 
 $ProjectRoot = Split-Path -Parent $PSScriptRoot
+$ToolsRoot = Join-Path $ProjectRoot ".tools"
+$PortableNodeDir = Join-Path $ToolsRoot "node"
+
 Set-Location $ProjectRoot
 
 function Write-Step([string]$Message) {
@@ -12,91 +16,178 @@ function Write-Step([string]$Message) {
   Write-Host "==> $Message" -ForegroundColor Cyan
 }
 
-function Refresh-SessionPath {
-  $machinePath = [Environment]::GetEnvironmentVariable("Path", "Machine")
-  $userPath = [Environment]::GetEnvironmentVariable("Path", "User")
+function Get-NodeMajorVersion([string]$NodePath) {
+  if (-not $NodePath -or -not (Test-Path $NodePath)) { return $null }
 
-  $parts = @()
-  if ($machinePath) { $parts += $machinePath }
-  if ($userPath) { $parts += $userPath }
-
-  $env:Path = ($parts -join ";")
-
-  $nodeDefault = Join-Path $env:ProgramFiles "nodejs"
-  if ((Test-Path $nodeDefault) -and ($env:Path -notlike "*$nodeDefault*")) {
-    $env:Path = "$env:Path;$nodeDefault"
-  }
-}
-
-function Get-NodeMajorVersion {
-  $node = Get-Command node.exe -ErrorAction SilentlyContinue
-  if (-not $node) { return $null }
-
-  $versionText = (& node.exe --version).Trim()
+  $versionText = (& $NodePath --version).Trim()
   if ($versionText -notmatch '^v(\d+)\.') { return $null }
 
   return [int]$Matches[1]
 }
 
+function Add-NodeToPath([string]$NodeDir) {
+  if ($env:Path -notlike "$NodeDir;*") {
+    $env:Path = "$NodeDir;$env:Path"
+  }
+}
+
+function Find-CompatibleNode {
+  $globalNode = Get-Command node.exe -ErrorAction SilentlyContinue
+  if ($globalNode) {
+    $major = Get-NodeMajorVersion $globalNode.Source
+    if ($null -ne $major -and $major -ge 20) {
+      return $globalNode.Source
+    }
+  }
+
+  $portableNode = Join-Path $PortableNodeDir "node.exe"
+  if (Test-Path $portableNode) {
+    $major = Get-NodeMajorVersion $portableNode
+    if ($null -ne $major -and $major -ge 20) {
+      Add-NodeToPath $PortableNodeDir
+      return $portableNode
+    }
+  }
+
+  return $null
+}
+
+function Get-NodeArchitecture {
+  $arch = $env:PROCESSOR_ARCHITECTURE
+  if ($env:PROCESSOR_ARCHITEW6432) {
+    $arch = $env:PROCESSOR_ARCHITEW6432
+  }
+
+  switch ($arch.ToUpperInvariant()) {
+    "AMD64" { return "x64" }
+    "ARM64" { return "arm64" }
+    default {
+      throw "Arquitetura Windows nao suportada automaticamente: $arch. Use Node.js 20+ instalado manualmente."
+    }
+  }
+}
+
+function Install-PortableNode {
+  Write-Step "Node.js 20+ nao encontrado. Preparando Node.js LTS portatil..."
+
+  $architecture = Get-NodeArchitecture
+  $fileKey = "win-$architecture-zip"
+  $indexUrl = "https://nodejs.org/dist/index.json"
+
+  Write-Host "Consultando releases oficiais do Node.js..." -ForegroundColor DarkGray
+  $releases = Invoke-RestMethod -Uri $indexUrl
+
+  $release = $releases |
+    Where-Object {
+      if (-not $_.lts) { return $false }
+      if ($_.files -notcontains $fileKey) { return $false }
+
+      $major = [int](($_.version -replace '^v', '').Split('.')[0])
+      return $major -ge 20
+    } |
+    Select-Object -First 1
+
+  if (-not $release) {
+    throw "Nao foi encontrada uma release LTS compativel no indice oficial do Node.js."
+  }
+
+  $version = $release.version
+  $zipName = "node-$version-win-$architecture.zip"
+  $baseUrl = "https://nodejs.org/dist/$version"
+  $zipUrl = "$baseUrl/$zipName"
+  $shaUrl = "$baseUrl/SHASUMS256.txt"
+
+  New-Item -ItemType Directory -Force -Path $ToolsRoot | Out-Null
+
+  $downloadDir = Join-Path $ToolsRoot "_download"
+  $extractDir = Join-Path $ToolsRoot "_extract"
+  Remove-Item $downloadDir -Recurse -Force -ErrorAction SilentlyContinue
+  Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+  New-Item -ItemType Directory -Force -Path $downloadDir | Out-Null
+  New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
+
+  $zipPath = Join-Path $downloadDir $zipName
+  $shaPath = Join-Path $downloadDir "SHASUMS256.txt"
+
+  Write-Host "Baixando $version ($architecture) de nodejs.org..." -ForegroundColor DarkGray
+  Invoke-WebRequest -Uri $zipUrl -OutFile $zipPath -UseBasicParsing
+  Invoke-WebRequest -Uri $shaUrl -OutFile $shaPath -UseBasicParsing
+
+  Write-Host "Validando SHA-256 publicado pelo Node.js..." -ForegroundColor DarkGray
+  $escapedName = [regex]::Escape($zipName)
+  $checksumLine = Get-Content $shaPath | Where-Object { $_ -match "\s+$escapedName$" } | Select-Object -First 1
+
+  if (-not $checksumLine) {
+    throw "Nao foi possivel localizar o checksum oficial de $zipName."
+  }
+
+  $expectedHash = (($checksumLine -split '\s+')[0]).ToLowerInvariant()
+  $actualHash = (Get-FileHash -Path $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+
+  if ($expectedHash -ne $actualHash) {
+    throw "Falha de integridade: o SHA-256 do Node.js baixado nao confere com o publicado em nodejs.org."
+  }
+
+  Write-Host "Checksum OK." -ForegroundColor Green
+  Write-Host "Extraindo runtime local..." -ForegroundColor DarkGray
+  Expand-Archive -Path $zipPath -DestinationPath $extractDir -Force
+
+  $extractedNode = Join-Path $extractDir "node-$version-win-$architecture"
+  if (-not (Test-Path (Join-Path $extractedNode "node.exe"))) {
+    throw "O pacote oficial foi baixado, mas node.exe nao foi encontrado apos a extracao."
+  }
+
+  Remove-Item $PortableNodeDir -Recurse -Force -ErrorAction SilentlyContinue
+  Move-Item -Path $extractedNode -Destination $PortableNodeDir
+
+  Remove-Item $downloadDir -Recurse -Force -ErrorAction SilentlyContinue
+  Remove-Item $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+
+  Add-NodeToPath $PortableNodeDir
+
+  $nodePath = Join-Path $PortableNodeDir "node.exe"
+  $major = Get-NodeMajorVersion $nodePath
+  if ($null -eq $major -or $major -lt 20) {
+    throw "Node.js portatil foi preparado, mas a versao encontrada nao atende ao requisito Node.js 20+."
+  }
+
+  Write-Host "Node.js portatil pronto em .tools\node." -ForegroundColor Green
+  return $nodePath
+}
+
 Write-Host "Power BI Web Dashboard - Windows Setup" -ForegroundColor White
 Write-Host "Project: $ProjectRoot" -ForegroundColor DarkGray
 
-Refresh-SessionPath
-
-$nodeMajor = Get-NodeMajorVersion
-
-if ($null -eq $nodeMajor -or $nodeMajor -lt 20) {
-  if ($null -eq $nodeMajor) {
-    Write-Step "Node.js nao encontrado. Instalando Node.js LTS..."
-  } else {
-    Write-Step "Node.js v$nodeMajor encontrado, mas o projeto exige Node.js 20+. Atualizando para LTS..."
-  }
-
-  $winget = Get-Command winget.exe -ErrorAction SilentlyContinue
-  if (-not $winget) {
-    Write-Host ""
-    Write-Host "ERRO: winget nao foi encontrado neste Windows." -ForegroundColor Red
-    Write-Host "Instale o Node.js LTS manualmente em https://nodejs.org/en/download" -ForegroundColor Yellow
-    Write-Host "Depois execute setup-windows.cmd novamente." -ForegroundColor Yellow
-    exit 2
-  }
-
-  & winget.exe install --id OpenJS.NodeJS.LTS --exact --source winget --accept-package-agreements --accept-source-agreements
-  if ($LASTEXITCODE -ne 0) {
-    Write-Host "ERRO: winget nao conseguiu instalar o Node.js LTS." -ForegroundColor Red
-    exit $LASTEXITCODE
-  }
-
-  Refresh-SessionPath
-  $nodeMajor = Get-NodeMajorVersion
-
-  if ($null -eq $nodeMajor -or $nodeMajor -lt 20) {
-    Write-Host "ERRO: Node.js foi instalado, mas ainda nao esta disponivel nesta sessao." -ForegroundColor Red
-    Write-Host "Feche esta janela e execute setup-windows.cmd novamente." -ForegroundColor Yellow
-    exit 3
-  }
+$nodePath = Find-CompatibleNode
+if (-not $nodePath) {
+  $nodePath = Install-PortableNode
 }
+
+$nodeDir = Split-Path -Parent $nodePath
+Add-NodeToPath $nodeDir
 
 Write-Step "Validando Node.js e npm"
-$nodeVersion = (& node.exe --version).Trim()
+$nodeVersion = (& $nodePath --version).Trim()
 Write-Host "Node.js: $nodeVersion" -ForegroundColor Green
 
-$npm = Get-Command npm.cmd -ErrorAction SilentlyContinue
-if (-not $npm) {
-  Write-Host "ERRO: npm nao foi encontrado mesmo com Node.js disponivel." -ForegroundColor Red
-  Write-Host "Reinstale o Node.js LTS e tente novamente." -ForegroundColor Yellow
-  exit 4
+$npmPath = Join-Path $nodeDir "npm.cmd"
+if (-not (Test-Path $npmPath)) {
+  $globalNpm = Get-Command npm.cmd -ErrorAction SilentlyContinue
+  if ($globalNpm) {
+    $npmPath = $globalNpm.Source
+  } else {
+    throw "npm nao foi encontrado ao lado do Node.js nem no PATH."
+  }
 }
 
-$npmVersion = (& npm.cmd --version).Trim()
+$npmVersion = (& $npmPath --version).Trim()
 Write-Host "npm: v$npmVersion" -ForegroundColor Green
 
 if (-not $SkipNpmInstall) {
   Write-Step "Instalando dependencias do projeto"
-  & npm.cmd install
+  & $npmPath install
   if ($LASTEXITCODE -ne 0) {
-    Write-Host "ERRO: npm install falhou." -ForegroundColor Red
-    exit $LASTEXITCODE
+    throw "npm install falhou com codigo $LASTEXITCODE."
   }
 }
 
@@ -111,7 +202,7 @@ if (-not (Test-Path ".env")) {
 }
 
 Write-Step "Executando diagnostico"
-& npm.cmd run doctor
+& $npmPath run doctor
 $doctorExit = $LASTEXITCODE
 
 Write-Host ""
