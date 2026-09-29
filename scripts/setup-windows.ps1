@@ -25,6 +25,27 @@ function Get-NodeMajorVersion([string]$NodePath) {
   return [int]$Matches[1]
 }
 
+function Get-NpmMajorVersion([string]$NpmPath) {
+  if (-not $NpmPath -or -not (Test-Path $NpmPath)) { return $null }
+
+  $versionText = (& $NpmPath --version).Trim()
+  if ($versionText -notmatch '^(\d+)\.') { return $null }
+
+  return [int]$Matches[1]
+}
+
+function Test-CompatibleRuntime([string]$NodePath, [string]$NpmPath) {
+  $nodeMajor = Get-NodeMajorVersion $NodePath
+  $npmMajor = Get-NpmMajorVersion $NpmPath
+
+  return (
+    $null -ne $nodeMajor -and
+    $null -ne $npmMajor -and
+    $nodeMajor -ge 20 -and
+    $npmMajor -ge 10
+  )
+}
+
 function Add-NodeToPath([string]$NodeDir) {
   if ($env:Path -notlike "$NodeDir;*") {
     $env:Path = "$NodeDir;$env:Path"
@@ -33,17 +54,17 @@ function Add-NodeToPath([string]$NodeDir) {
 
 function Find-CompatibleNode {
   $globalNode = Get-Command node.exe -ErrorAction SilentlyContinue
-  if ($globalNode) {
-    $major = Get-NodeMajorVersion $globalNode.Source
-    if ($null -ne $major -and $major -ge 20) {
+  $globalNpm = Get-Command npm.cmd -ErrorAction SilentlyContinue
+  if ($globalNode -and $globalNpm) {
+    if (Test-CompatibleRuntime $globalNode.Source $globalNpm.Source) {
       return $globalNode.Source
     }
   }
 
   $portableNode = Join-Path $PortableNodeDir "node.exe"
-  if (Test-Path $portableNode) {
-    $major = Get-NodeMajorVersion $portableNode
-    if ($null -ne $major -and $major -ge 20) {
+  $portableNpm = Join-Path $PortableNodeDir "npm.cmd"
+  if ((Test-Path $portableNode) -and (Test-Path $portableNpm)) {
+    if (Test-CompatibleRuntime $portableNode $portableNpm) {
       Add-NodeToPath $PortableNodeDir
       return $portableNode
     }
@@ -68,7 +89,7 @@ function Get-NodeArchitecture {
 }
 
 function Install-PortableNode {
-  Write-Step "Node.js 20+ nao encontrado. Preparando Node.js LTS portatil..."
+  Write-Step "Node.js 20+ / npm 10+ nao encontrados. Preparando Node.js LTS portatil..."
 
   $architecture = Get-NodeArchitecture
   $fileKey = "win-$architecture-zip"
@@ -146,9 +167,9 @@ function Install-PortableNode {
   Add-NodeToPath $PortableNodeDir
 
   $nodePath = Join-Path $PortableNodeDir "node.exe"
-  $major = Get-NodeMajorVersion $nodePath
-  if ($null -eq $major -or $major -lt 20) {
-    throw "Node.js portatil foi preparado, mas a versao encontrada nao atende ao requisito Node.js 20+."
+  $npmPath = Join-Path $PortableNodeDir "npm.cmd"
+  if (-not (Test-CompatibleRuntime $nodePath $npmPath)) {
+    throw "Runtime portatil foi preparado, mas Node.js/npm nao atendem aos requisitos Node.js 20+ e npm 10+."
   }
 
   Write-Host "Node.js portatil pronto em .tools\node." -ForegroundColor Green
@@ -181,6 +202,10 @@ if (-not (Test-Path $npmPath)) {
 }
 
 $npmVersion = (& $npmPath --version).Trim()
+$npmMajor = Get-NpmMajorVersion $npmPath
+if ($null -eq $npmMajor -or $npmMajor -lt 10) {
+  throw "npm 10+ e necessario. Versao encontrada: $npmVersion"
+}
 Write-Host "npm: v$npmVersion" -ForegroundColor Green
 
 if (-not $SkipNpmInstall) {
