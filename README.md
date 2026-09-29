@@ -138,7 +138,7 @@ Edite `config/dashboard.json`.
   "id": "category",
   "label": "Category",
   "type": "multi-select",
-  "field": "'Product'[Category]'"
+  "field": "'Product'[Category]"
 }
 ```
 
