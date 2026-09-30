@@ -37,6 +37,9 @@ const dashboardSchema = z.object({
     subtitle: z.string().optional(),
     accent: z.string().optional(),
   }),
+  layout: z.object({
+    showCardTitles: z.boolean().optional(),
+  }).optional(),
   filters: z.array(filterSchema),
   cards: z.array(cardSchema),
   charts: z.array(chartSchema),
@@ -55,6 +58,9 @@ export function loadDashboardConfig(): DashboardConfig {
 export function publicDashboardConfig(config: DashboardConfig) {
   return {
     branding: config.branding,
+    layout: {
+      showCardTitles: config.layout?.showCardTitles ?? false,
+    },
     filters: config.filters.map(({ id, label, type }) => ({ id, label, type })),
     cards: config.cards.map(({ id, title, format }) => ({ id, title, format })),
     charts: config.charts.map(({ id, title, type }) => ({ id, title, type })),
