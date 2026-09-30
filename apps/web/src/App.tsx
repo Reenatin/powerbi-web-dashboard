@@ -25,9 +25,88 @@ function setupMessage(status: SystemStatus) {
   return null;
 }
 
-function themeFromStorage(): ThemeMode {
+function initialTheme(): ThemeMode {
   if (typeof window === "undefined") return "light";
-  return window.localStorage.getItem("pbi_web_theme") === "dark" ? "dark" : "light";
+  const saved = window.localStorage.getItem("powerbi_dashboard_theme");
+  return saved === "dark" ? "dark" : "light";
+}
+
+function MoonIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M20.2 15.3A8.7 8.7 0 0 1 8.7 3.8a8.8 8.8 0 1 0 11.5 11.5Z" />
+    </svg>
+  );
+}
+
+function SunIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="4" />
+      <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+    </svg>
+  );
+}
+
+function GridIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <rect x="4" y="4" width="6" height="6" rx="1.3" />
+      <rect x="14" y="4" width="6" height="6" rx="1.3" />
+      <rect x="4" y="14" width="6" height="6" rx="1.3" />
+      <rect x="14" y="14" width="6" height="6" rx="1.3" />
+    </svg>
+  );
+}
+
+function FilterIcon() {
+  return <span className="funnel-icon" aria-hidden="true" />;
+}
+
+function MetricSlot({
+  title,
+  value,
+  showTitle,
+}: {
+  title?: string;
+  value: string;
+  showTitle: boolean;
+}) {
+  return (
+    <article className="metric-group">
+      <span className="metric-corner" aria-hidden="true" />
+      {showTitle && title ? <div className="metric-title">{title}</div> : <div className="metric-title metric-title-empty" />}
+      <div className="metric-headline">{value}</div>
+      <div className="metric-list metric-list-empty" aria-hidden="true">
+        <span />
+        <span />
+        <span />
+      </div>
+    </article>
+  );
+}
+
+function ChartPanel({
+  title,
+  option,
+}: {
+  title?: string;
+  option?: EChartsOption;
+}) {
+  return (
+    <article className="chart-panel">
+      <div className="chart-panel-head">
+        <div>
+          <span className="panel-kicker">VISUAL</span>
+          {title ? <h2>{title}</h2> : <h2 className="chart-title-empty">&nbsp;</h2>}
+        </div>
+        <span className="panel-dot" />
+      </div>
+      <div className="chart-panel-body">
+        {option ? <EChart option={option} className="dashboard-chart" /> : <div className="chart-empty-state">—</div>}
+      </div>
+    </article>
+  );
 }
 
 export default function App() {
@@ -36,14 +115,14 @@ export default function App() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [filters, setFilters] = useState<FilterSelections>({});
   const [filtersOpen, setFiltersOpen] = useState(false);
-  const [theme, setTheme] = useState<ThemeMode>(themeFromStorage);
+  const [theme, setTheme] = useState<ThemeMode>(initialTheme);
   const [error, setError] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState<string | null>(null);
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
-    window.localStorage.setItem("pbi_web_theme", theme);
+    window.localStorage.setItem("powerbi_dashboard_theme", theme);
   }, [theme]);
 
   useEffect(() => {
@@ -51,7 +130,7 @@ export default function App() {
       .then(([nextStatus, nextConfig]) => {
         setStatus(nextStatus);
         setConfig(nextConfig);
-        document.documentElement.style.setProperty("--accent", nextConfig.branding.accent ?? "#0ea5e9");
+        document.documentElement.style.setProperty("--accent", nextConfig.branding.accent ?? "#07b2fd");
       })
       .catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
   }, []);
@@ -66,8 +145,15 @@ export default function App() {
       .catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
   }, [filters, status]);
 
-  const cards = useMemo(() => new Map(data?.cards.map((card) => [card.id, card.value]) ?? []), [data]);
-  const chartData = useMemo(() => new Map(data?.charts.map((chart) => [chart.id, chart.rows]) ?? []), [data]);
+  const cards = useMemo(
+    () => new Map(data?.cards.map((card) => [card.id, card.value]) ?? []),
+    [data],
+  );
+
+  const chartData = useMemo(
+    () => new Map(data?.charts.map((chart) => [chart.id, chart.rows]) ?? []),
+    [data],
+  );
 
   const runTest = async () => {
     setTesting(true);
@@ -83,79 +169,198 @@ export default function App() {
   };
 
   if (!status || !config) {
-    return <main className="center-state"><div className="loader" /><p>Loading project configuration…</p>{error && <pre>{error}</pre>}</main>;
+    return (
+      <main className="center-state">
+        <div className="loader" />
+        <p>Loading project configuration…</p>
+        {error && <pre>{error}</pre>}
+      </main>
+    );
   }
 
   const message = setupMessage(status);
-  const accent = config.branding.accent ?? "#0ea5e9";
+  const accent = config.branding.accent ?? "#07b2fd";
+  const cardSlotCount = Math.max(4, config.cards.length);
+  const chartSlotCount = Math.max(3, config.charts.length);
+
+  const buildChartOption = (chartIndex: number): EChartsOption | undefined => {
+    const chart = config.charts[chartIndex];
+    if (!chart) return undefined;
+
+    const rows = chartData.get(chart.id) ?? [];
+    const dark = theme === "dark";
+    const text = dark ? "#f7f9fc" : "#0d1317";
+    const soft = dark ? "#aebbd0" : "#67758a";
+    const muted = dark ? "#71819a" : "#8a949f";
+    const grid = dark ? "rgba(130,171,222,.13)" : "#edf0f2";
+    const tooltipBg = dark ? "#0d1b2d" : "#ffffff";
+    const tooltipBorder = dark ? "rgba(130,171,222,.22)" : "#e5e8eb";
+
+    if (chart.type === "pie") {
+      return {
+        tooltip: {
+          trigger: "item",
+          backgroundColor: tooltipBg,
+          borderColor: tooltipBorder,
+          textStyle: { color: text },
+        },
+        legend: {
+          bottom: 0,
+          textStyle: { color: soft, fontSize: 10 },
+        },
+        series: [{
+          type: "pie",
+          radius: ["46%", "69%"],
+          center: ["50%", "46%"],
+          data: rows.map((row) => ({ name: row.label, value: row.value ?? 0 })),
+          label: { color: soft, fontSize: 10 },
+        }],
+      };
+    }
+
+    if (chart.type === "bar") {
+      return {
+        animationDuration: 450,
+        grid: { left: 128, right: 64, top: 8, bottom: 8, containLabel: false },
+        tooltip: {
+          trigger: "axis",
+          axisPointer: { type: "shadow" },
+          backgroundColor: tooltipBg,
+          borderColor: tooltipBorder,
+          textStyle: { color: text },
+        },
+        xAxis: { type: "value", show: false },
+        yAxis: {
+          type: "category",
+          inverse: true,
+          data: rows.map((row) => row.label),
+          axisLine: { show: false },
+          axisTick: { show: false },
+          axisLabel: {
+            color: soft,
+            fontSize: 11,
+            width: 108,
+            overflow: "truncate",
+            align: "right",
+          },
+        },
+        series: [{
+          type: "bar",
+          data: rows.map((row) => row.value ?? 0),
+          barWidth: 18,
+          showBackground: true,
+          backgroundStyle: {
+            color: dark ? "rgba(255,255,255,.07)" : "#eeeeee",
+            borderRadius: 999,
+          },
+          itemStyle: { color: accent, borderRadius: [0, 999, 999, 0] },
+        }],
+      };
+    }
+
+    return {
+      animationDuration: 450,
+      grid: { left: 44, right: 18, top: 16, bottom: 34 },
+      tooltip: {
+        trigger: "axis",
+        backgroundColor: tooltipBg,
+        borderColor: tooltipBorder,
+        textStyle: { color: text },
+      },
+      xAxis: {
+        type: "category",
+        boundaryGap: false,
+        data: rows.map((row) => row.label),
+        axisLine: { lineStyle: { color: grid } },
+        axisTick: { show: false },
+        axisLabel: { color: muted, fontSize: 10 },
+      },
+      yAxis: {
+        type: "value",
+        scale: true,
+        axisLine: { show: false },
+        axisTick: { show: false },
+        axisLabel: { color: muted, fontSize: 10 },
+        splitLine: { lineStyle: { color: grid } },
+      },
+      series: [{
+        type: "line",
+        smooth: 0.35,
+        showSymbol: false,
+        data: rows.map((row) => row.value ?? 0),
+        lineStyle: { color: accent, width: 3 },
+        areaStyle: { color: "rgba(7,178,253,.20)" },
+      }],
+    };
+  };
 
   return (
-    <div className="dashboard-shell">
-      <header className="dashboard-header">
-        <div>
-          <span className="header-kicker">POWER BI WEB DASHBOARD</span>
+    <div className={`app-shell ${filtersOpen ? "filters-open" : ""}`}>
+      <header className="topbar">
+        <div className="title-wrap">
+          <div className="page-kicker">POWER BI WEB DASHBOARD</div>
           <h1>{config.branding.name}</h1>
-          {config.branding.subtitle && <p>{config.branding.subtitle}</p>}
         </div>
 
-        <div className="header-actions">
-          <span className="connection-badge">
-            <span className={status.powerBiConfigured ? "connection-dot connected" : "connection-dot"} />
-            {status.powerBiConfigured ? "Power BI configured" : "Setup required"}
-          </span>
+        <div className="brand-spacer" aria-hidden="true" />
+
+        <div className="topbar-meta">
+          <div className={`data-source-status ${status.powerBiConfigured ? "" : "unavailable"}`}>
+            <span className="status-dot" />
+            {status.powerBiConfigured ? "Power BI configurado" : "Configuração pendente"}
+          </div>
         </div>
       </header>
 
-      <div className="dashboard-workspace">
-        <nav className="side-rail" aria-label="Dashboard tools">
-          <button className="rail-action rail-action-primary" type="button" title="Visão geral" aria-label="Visão geral">
-            <span className="rail-grid-icon" />
-          </button>
-
-          <span className="rail-separator" />
-
-          <button
-            className={`rail-action ${filtersOpen ? "is-active" : ""}`}
-            type="button"
-            onClick={() => setFiltersOpen((current) => !current)}
-            title="Filtros"
-            aria-label="Filtros"
-          >
-            <span className="rail-filter-icon" />
-          </button>
-
-          <span className="rail-separator" />
-
-          <button
-            className="rail-action"
-            type="button"
-            onClick={() => setTheme((current) => current === "light" ? "dark" : "light")}
-            title="Alternar tema"
-            aria-label="Alternar tema"
-          >
-            <span className={theme === "light" ? "theme-symbol moon" : "theme-symbol sun"} />
-          </button>
-        </nav>
-
-        {filtersOpen && (
-          <aside className="filters-drawer">
-            <div className="filters-drawer-title">
-              <div>
-                <span>FILTROS</span>
-                <strong>Refine a visualização</strong>
-              </div>
-              <button type="button" onClick={() => setFiltersOpen(false)} aria-label="Fechar filtros">×</button>
-            </div>
-            <Filters config={config} value={filters} onChange={setFilters} />
+      <div className="workspace">
+        {!filtersOpen && (
+          <aside className="nav-rail" aria-label="Navegação">
+            <button className="rail-button rail-home-button" type="button" aria-label="Visão geral" title="Visão geral">
+              <GridIcon />
+            </button>
+            <span className="rail-divider" />
+            <button
+              className="rail-button"
+              type="button"
+              aria-label="Filtros"
+              title="Filtros"
+              onClick={() => setFiltersOpen(true)}
+            >
+              <FilterIcon />
+            </button>
+            <span className="rail-divider" />
+            <button
+              className="rail-button theme-button"
+              type="button"
+              aria-label={theme === "light" ? "Ativar tema escuro" : "Ativar tema claro"}
+              title={theme === "light" ? "Tema escuro" : "Tema claro"}
+              onClick={() => setTheme((current) => current === "light" ? "dark" : "light")}
+            >
+              {theme === "light" ? <MoonIcon /> : <SunIcon />}
+            </button>
           </aside>
         )}
 
-        <main className="dashboard-content">
+        <aside className="filter-sidebar" aria-label="Filtros" aria-hidden={!filtersOpen}>
+          <div className="filter-header">
+            <div className="filter-title-icon"><FilterIcon /></div>
+            <div>
+              <h2>Filtros</h2>
+              <p>Refine a visão do dashboard</p>
+            </div>
+            <button className="collapse-filter" type="button" onClick={() => setFiltersOpen(false)} aria-label="Fechar filtros">‹</button>
+          </div>
+          <div className="filter-body">
+            <Filters config={config} value={filters} onChange={setFilters} />
+          </div>
+        </aside>
+
+        <main className="dashboard-area">
           {message && (
-            <section className="setup-panel">
-              <div className="setup-mark">PBI</div>
+            <section className="setup-card">
+              <div className="setup-icon">PBI</div>
               <div>
-                <span className="section-kicker">GETTING STARTED</span>
+                <span className="eyebrow">GETTING STARTED</span>
                 <h2>No demo data. Your model, your dashboard.</h2>
                 <p>{message}</p>
                 <div className="setup-actions">
@@ -170,99 +375,61 @@ export default function App() {
           )}
 
           {error && (
-            <section className="error-panel">
+            <section className="error-card">
               <strong>Power BI request failed</strong>
               <p>{error}</p>
             </section>
           )}
 
-          {status.dashboardConfigured && config.cards.length > 0 && (
-            <section>
-              <div className="section-title">
-                <span className="section-kicker">INDICADORES</span>
-                <h2>Resumo do período</h2>
-              </div>
+          {status.dashboardConfigured && (
+            <>
+              <section className="section-head">
+                <div>
+                  <span className="eyebrow">INDICADORES</span>
+                  <h2>Resumo do período</h2>
+                </div>
+              </section>
 
-              <div className="metric-grid">
-                {config.cards.map((card) => (
-                  <article className="metric-tile" key={card.id}>
-                    {config.layout.showCardTitles && <span className="metric-title">{card.title}</span>}
-                    <strong>{formatValue(cards.get(card.id) ?? null, card.format)}</strong>
-                    <i aria-hidden="true" />
-                  </article>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {status.dashboardConfigured && config.charts.length > 0 && (
-            <section>
-              <div className="section-title">
-                <span className="section-kicker">ANÁLISE</span>
-                <h2>Visualizações</h2>
-              </div>
-
-              <div className="visual-grid">
-                {config.charts.map((chart) => {
-                  const rows = chartData.get(chart.id) ?? [];
-                  const dark = theme === "dark";
-                  const axisColor = dark ? "#aebbd0" : "#64748b";
-                  const gridColor = dark ? "rgba(148,163,184,.14)" : "#edf1f4";
-                  const tooltipBackground = dark ? "#0e1b2b" : "#ffffff";
-                  const option: EChartsOption = chart.type === "pie"
-                    ? {
-                        tooltip: { trigger: "item", backgroundColor: tooltipBackground },
-                        series: [{
-                          type: "pie",
-                          radius: ["48%", "72%"],
-                          data: rows.map((row) => ({ name: row.label, value: row.value ?? 0 })),
-                        }],
-                      }
-                    : {
-                        tooltip: { trigger: "axis", backgroundColor: tooltipBackground },
-                        grid: { left: 46, right: 18, top: 16, bottom: 48, containLabel: true },
-                        xAxis: {
-                          type: "category",
-                          data: rows.map((row) => row.label),
-                          axisLine: { lineStyle: { color: gridColor } },
-                          axisLabel: { color: axisColor, rotate: rows.length > 8 ? 30 : 0 },
-                        },
-                        yAxis: {
-                          type: "value",
-                          axisLine: { show: false },
-                          splitLine: { lineStyle: { color: gridColor } },
-                          axisLabel: { color: axisColor },
-                        },
-                        series: [{
-                          type: chart.type,
-                          data: rows.map((row) => row.value ?? 0),
-                          smooth: chart.type === "line",
-                          itemStyle: { color: accent },
-                          lineStyle: { color: accent, width: 3 },
-                          areaStyle: chart.type === "line" ? { color: "rgba(14,165,233,.12)" } : undefined,
-                        }],
-                      };
-
+              <section className="summary-grid" aria-label="Indicadores principais">
+                {Array.from({ length: cardSlotCount }, (_, index) => {
+                  const card = config.cards[index];
                   return (
-                    <article className="visual-panel" key={chart.id}>
-                      <div className="visual-panel-heading">
-                        <div>
-                          <span className="section-kicker">VISUAL</span>
-                          <h3>{chart.title}</h3>
-                        </div>
-                        <span className="visual-dot" />
-                      </div>
-                      <EChart option={option} />
-                    </article>
+                    <MetricSlot
+                      key={card?.id ?? `empty-card-${index}`}
+                      title={card?.title}
+                      value={card ? formatValue(cards.get(card.id) ?? null, card.format) : "—"}
+                      showTitle={config.layout.showCardTitles}
+                    />
                   );
                 })}
-              </div>
-            </section>
+              </section>
+
+              <section className="charts-grid">
+                {Array.from({ length: chartSlotCount }, (_, index) => {
+                  const chart = config.charts[index];
+                  return (
+                    <ChartPanel
+                      key={chart?.id ?? `empty-chart-${index}`}
+                      title={chart?.title}
+                      option={buildChartOption(index)}
+                    />
+                  );
+                })}
+              </section>
+
+              <section className="history-card">
+                <div className="history-header">
+                  <div>
+                    <span className="panel-kicker">DETALHAMENTO</span>
+                    <h2>Histórico</h2>
+                  </div>
+                </div>
+                <div className="history-placeholder">—</div>
+              </section>
+            </>
           )}
         </main>
       </div>
-
-      {filtersOpen && <button className="mobile-drawer-backdrop" type="button" aria-label="Fechar filtros" onClick={() => setFiltersOpen(false)} />}
     </div>
   );
 }
