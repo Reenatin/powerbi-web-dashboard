@@ -33,6 +33,9 @@ export type DashboardConfig = {
     subtitle?: string;
     accent?: string;
   };
+  layout?: {
+    showCardTitles?: boolean;
+  };
   filters: DashboardFilterConfig[];
   cards: DashboardCardConfig[];
   charts: DashboardChartConfig[];
