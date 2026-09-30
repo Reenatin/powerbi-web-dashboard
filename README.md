@@ -193,6 +193,20 @@ Edite `config/dashboard.json`.
 
 Os identificadores de tabela/campo e medidas acima são apenas exemplos. Use os nomes existentes no seu modelo.
 
+## Layout do dashboard
+
+A estrutura visual padrão inclui cabeçalho, navegação lateral, drawer de filtros, cards de indicadores e painéis de gráficos.
+
+Os títulos dos cards ficam ocultos por padrão. Para exibi-los, altere:
+
+```json
+"layout": {
+  "showCardTitles": true
+}
+```
+
+em `config/dashboard.json`.
+
 ## Segurança
 
 - `.env` é ignorado pelo Git.
