@@ -1,13 +1,21 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { EChartsOption } from "echarts";
 import { EChart } from "./components/EChart";
-import { Filters } from "./components/Filters";
+import { FilterSidebar } from "./components/FilterSidebar";
+import { MetricGroup } from "./components/MetricGroup";
 import { getConfig, getDashboardData, getStatus, testConnection } from "./services/api";
 import type { DashboardData, FilterSelections, PublicConfig, SystemStatus, ValueFormat } from "./types/api";
 
 type ThemeMode = "light" | "dark";
+type HistoryGranularity = "day" | "month" | "year";
 
-function formatValue(value: number | null, format: ValueFormat): string {
+function initialTheme(): ThemeMode {
+  if (typeof window === "undefined") return "light";
+  const saved = window.localStorage.getItem("powerbi_dashboard_theme");
+  return saved === "dark" || saved === "light" ? saved : "light";
+}
+
+function formatValue(value: number | null | undefined, format: ValueFormat = "integer"): string {
   if (value == null) return "—";
   if (format === "percentage") {
     const normalized = Math.abs(value) <= 1 ? value * 100 : value;
@@ -25,10 +33,11 @@ function setupMessage(status: SystemStatus) {
   return null;
 }
 
-function initialTheme(): ThemeMode {
-  if (typeof window === "undefined") return "light";
-  const saved = window.localStorage.getItem("powerbi_dashboard_theme");
-  return saved === "dark" ? "dark" : "light";
+function activeFilterCount(filters: FilterSelections): number {
+  return Object.values(filters).reduce((count, selected) => {
+    if (Array.isArray(selected)) return count + (selected.length > 0 ? 1 : 0);
+    return count + (selected?.from || selected?.to ? 1 : 0);
+  }, 0);
 }
 
 function MoonIcon() {
@@ -48,63 +57,77 @@ function SunIcon() {
   );
 }
 
-function GridIcon() {
+function NavigationIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
-      <rect x="4" y="4" width="6" height="6" rx="1.3" />
-      <rect x="14" y="4" width="6" height="6" rx="1.3" />
-      <rect x="4" y="14" width="6" height="6" rx="1.3" />
-      <rect x="14" y="14" width="6" height="6" rx="1.3" />
+      <path d="M4.3 11.1 19.1 4.5c.7-.3 1.4.4 1.1 1.1l-6.6 14.8c-.3.8-1.5.7-1.7-.1l-1.5-6.7-6.7-1.5c-.8-.2-.9-1.4.6-2Z" />
     </svg>
   );
 }
 
-function FilterIcon() {
-  return <span className="funnel-icon" aria-hidden="true" />;
+function FocusIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M8 3H3v5M16 3h5v5M21 16v5h-5M8 21H3v-5" />
+    </svg>
+  );
 }
 
-function MetricSlot({
-  title,
+function GranularitySwitch({
   value,
-  showTitle,
+  onChange,
+  compact = false,
+  hidden = false,
 }: {
-  title?: string;
-  value: string;
-  showTitle: boolean;
+  value: HistoryGranularity;
+  onChange: (value: HistoryGranularity) => void;
+  compact?: boolean;
+  hidden?: boolean;
 }) {
+  const items: { value: HistoryGranularity; label: string }[] = [
+    { value: "day", label: "Dia" },
+    { value: "month", label: "Mês" },
+    { value: "year", label: "Ano" },
+  ];
+
   return (
-    <article className="metric-group">
-      <span className="metric-corner" aria-hidden="true" />
-      {showTitle && title ? <div className="metric-title">{title}</div> : <div className="metric-title metric-title-empty" />}
-      <div className="metric-headline">{value}</div>
-      <div className="metric-list metric-list-empty" aria-hidden="true">
-        <span />
-        <span />
-        <span />
-      </div>
-    </article>
+    <div className={`history-granularity-switch ${compact ? "compact" : ""} ${hidden ? "template-hidden" : ""}`} role="group" aria-label="Granularidade da tabela">
+      {items.map((item) => (
+        <button
+          key={item.value}
+          type="button"
+          className={value === item.value ? "active" : ""}
+          aria-pressed={value === item.value}
+          onClick={() => onChange(item.value)}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
 function ChartPanel({
+  kicker,
   title,
-  option,
+  children,
+  hiddenText,
 }: {
-  title?: string;
-  option?: EChartsOption;
+  kicker: string;
+  title: string;
+  children: ReactNode;
+  hiddenText: boolean;
 }) {
   return (
     <article className="chart-panel">
       <div className="chart-panel-head">
-        <div>
-          <span className="panel-kicker">VISUAL</span>
-          {title ? <h2>{title}</h2> : <h2 className="chart-title-empty">&nbsp;</h2>}
+        <div className={hiddenText ? "template-hidden" : ""}>
+          <span className="panel-kicker">{kicker || "\u00A0"}</span>
+          <h2>{title || "\u00A0"}</h2>
         </div>
         <span className="panel-dot" />
       </div>
-      <div className="chart-panel-body">
-        {option ? <EChart option={option} className="dashboard-chart" /> : <div className="chart-empty-state">—</div>}
-      </div>
+      <div className="chart-panel-body">{children}</div>
     </article>
   );
 }
@@ -115,6 +138,10 @@ export default function App() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [filters, setFilters] = useState<FilterSelections>({});
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [historyFocusOpen, setHistoryFocusOpen] = useState(false);
+  const [historyGranularity, setHistoryGranularity] = useState<HistoryGranularity>("day");
+  const [railExpanded, setRailExpanded] = useState(false);
   const [theme, setTheme] = useState<ThemeMode>(initialTheme);
   const [error, setError] = useState<string | null>(null);
   const [testing, setTesting] = useState(false);
@@ -123,7 +150,39 @@ export default function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     window.localStorage.setItem("powerbi_dashboard_theme", theme);
+    document.querySelector('meta[name="theme-color"]')?.setAttribute(
+      "content",
+      theme === "dark" ? "#07111f" : "#ffffff",
+    );
   }, [theme]);
+
+  useEffect(() => {
+    const revealTimer = window.setTimeout(() => setRailExpanded(true), 1000);
+    return () => window.clearTimeout(revealTimer);
+  }, []);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMenuOpen(false);
+        setHistoryFocusOpen(false);
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, []);
+
+  useEffect(() => {
+    if (!menuOpen && !historyFocusOpen) {
+      document.body.style.overflow = "";
+      return;
+    }
+    const previous = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previous;
+    };
+  }, [menuOpen, historyFocusOpen]);
 
   useEffect(() => {
     Promise.all([getStatus(), getConfig()])
@@ -131,18 +190,27 @@ export default function App() {
         setStatus(nextStatus);
         setConfig(nextConfig);
         document.documentElement.style.setProperty("--accent", nextConfig.branding.accent ?? "#07b2fd");
+        document.documentElement.style.setProperty("--accent-strong", nextConfig.branding.accent ?? "#079edc");
       })
       .catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
   }, []);
 
   useEffect(() => {
     if (!status?.powerBiConfigured || !status.dashboardConfigured) return;
+    let active = true;
     getDashboardData(filters)
       .then((result) => {
+        if (!active) return;
         setData(result);
         setError(null);
       })
-      .catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
+      .catch((reason) => {
+        if (!active) return;
+        setError(reason instanceof Error ? reason.message : String(reason));
+      });
+    return () => {
+      active = false;
+    };
   }, [filters, status]);
 
   const cards = useMemo(
@@ -179,41 +247,64 @@ export default function App() {
   }
 
   const message = setupMessage(status);
+  const filterCount = activeFilterCount(filters);
   const accent = config.branding.accent ?? "#07b2fd";
-  const cardSlotCount = Math.max(4, config.cards.length);
-  const chartSlotCount = Math.max(3, config.charts.length);
+  const textHidden = !config.layout.showSectionTitles;
 
-  const buildChartOption = (chartIndex: number): EChartsOption | undefined => {
-    const chart = config.charts[chartIndex];
-    if (!chart) return undefined;
+  const cardAt = (index: number) => {
+    const card = config.cards[index];
+    return {
+      title: config.layout.showCardTitles ? card?.title ?? "" : "",
+      value: card ? formatValue(cards.get(card.id), card.format) : "—",
+    };
+  };
 
-    const rows = chartData.get(chart.id) ?? [];
-    const dark = theme === "dark";
-    const text = dark ? "#f7f9fc" : "#0d1317";
-    const soft = dark ? "#aebbd0" : "#67758a";
-    const muted = dark ? "#71819a" : "#8a949f";
-    const grid = dark ? "rgba(130,171,222,.13)" : "#edf0f2";
-    const tooltipBg = dark ? "#0d1b2d" : "#ffffff";
-    const tooltipBorder = dark ? "rgba(130,171,222,.22)" : "#e5e8eb";
+  const metric = (index: number) => {
+    const item = cardAt(index);
+    return {
+      label: item.title,
+      value: item.value,
+      sub: "\u00A0",
+    };
+  };
+
+  const chartTheme = {
+    text: theme === "dark" ? "#f7f9fc" : "#0d1317",
+    soft: theme === "dark" ? "#aebbd0" : "#67758a",
+    muted: theme === "dark" ? "#71819a" : "#8a949f",
+    grid: theme === "dark" ? "rgba(130,171,222,.13)" : "#edf0f2",
+    barBackground: theme === "dark" ? "rgba(255,255,255,.07)" : "#eeeeee",
+    tooltipBg: theme === "dark" ? "#0d1b2d" : "#ffffff",
+    tooltipBorder: theme === "dark" ? "rgba(130,171,222,.22)" : "#e5e8eb",
+  };
+
+  const buildChartOption = (index: number): EChartsOption => {
+    const chart = config.charts[index];
+    const rows = chart ? chartData.get(chart.id) ?? [] : [];
+
+    if (!chart) {
+      return {
+        xAxis: { show: false },
+        yAxis: { show: false },
+        series: [],
+      };
+    }
 
     if (chart.type === "pie") {
       return {
+        animationDuration: 450,
         tooltip: {
           trigger: "item",
-          backgroundColor: tooltipBg,
-          borderColor: tooltipBorder,
-          textStyle: { color: text },
-        },
-        legend: {
-          bottom: 0,
-          textStyle: { color: soft, fontSize: 10 },
+          backgroundColor: chartTheme.tooltipBg,
+          borderColor: chartTheme.tooltipBorder,
+          textStyle: { color: chartTheme.text },
         },
         series: [{
           type: "pie",
-          radius: ["46%", "69%"],
-          center: ["50%", "46%"],
+          radius: ["46%", "70%"],
+          center: ["50%", "50%"],
           data: rows.map((row) => ({ name: row.label, value: row.value ?? 0 })),
-          label: { color: soft, fontSize: 10 },
+          label: { color: chartTheme.soft, fontSize: 10 },
         }],
       };
     }
@@ -221,39 +312,55 @@ export default function App() {
     if (chart.type === "bar") {
       return {
         animationDuration: 450,
-        grid: { left: 128, right: 64, top: 8, bottom: 8, containLabel: false },
+        grid: {
+          left: index === 0 ? 150 : 130,
+          right: 72,
+          top: 8,
+          bottom: 8,
+          containLabel: false,
+        },
         tooltip: {
           trigger: "axis",
           axisPointer: { type: "shadow" },
-          backgroundColor: tooltipBg,
-          borderColor: tooltipBorder,
-          textStyle: { color: text },
+          backgroundColor: chartTheme.tooltipBg,
+          borderColor: chartTheme.tooltipBorder,
+          textStyle: { color: chartTheme.text },
         },
         xAxis: { type: "value", show: false },
         yAxis: {
           type: "category",
           inverse: true,
-          data: rows.map((row) => row.label),
+          data: rows.map((item) => item.label),
           axisLine: { show: false },
           axisTick: { show: false },
           axisLabel: {
-            color: soft,
-            fontSize: 11,
-            width: 108,
+            color: chartTheme.soft,
+            fontSize: 12,
+            width: index === 0 ? 132 : 110,
             overflow: "truncate",
             align: "right",
           },
         },
         series: [{
           type: "bar",
-          data: rows.map((row) => row.value ?? 0),
+          data: rows.map((item, rowIndex) => ({
+            value: item.value ?? 0,
+            itemStyle: {
+              color: rowIndex === 0 ? accent : (theme === "dark" ? "#3b9ec9" : "#69c5ee"),
+              borderRadius: [0, 999, 999, 0],
+            },
+          })),
           barWidth: 18,
           showBackground: true,
-          backgroundStyle: {
-            color: dark ? "rgba(255,255,255,.07)" : "#eeeeee",
-            borderRadius: 999,
+          backgroundStyle: { color: chartTheme.barBackground, borderRadius: 999 },
+          label: {
+            show: true,
+            position: "right",
+            distance: 52,
+            color: chartTheme.text,
+            fontWeight: 700,
+            fontSize: 12,
           },
-          itemStyle: { color: accent, borderRadius: [0, 999, 999, 0] },
         }],
       };
     }
@@ -263,51 +370,57 @@ export default function App() {
       grid: { left: 44, right: 18, top: 16, bottom: 34 },
       tooltip: {
         trigger: "axis",
-        backgroundColor: tooltipBg,
-        borderColor: tooltipBorder,
-        textStyle: { color: text },
+        backgroundColor: chartTheme.tooltipBg,
+        borderColor: chartTheme.tooltipBorder,
+        textStyle: { color: chartTheme.text },
       },
       xAxis: {
         type: "category",
         boundaryGap: false,
-        data: rows.map((row) => row.label),
-        axisLine: { lineStyle: { color: grid } },
+        data: rows.map((item) => item.label),
+        axisLine: { lineStyle: { color: chartTheme.grid } },
         axisTick: { show: false },
-        axisLabel: { color: muted, fontSize: 10 },
+        axisLabel: { color: chartTheme.muted, fontSize: 10 },
       },
       yAxis: {
         type: "value",
         scale: true,
         axisLine: { show: false },
         axisTick: { show: false },
-        axisLabel: { color: muted, fontSize: 10 },
-        splitLine: { lineStyle: { color: grid } },
+        axisLabel: { color: chartTheme.muted, fontSize: 10 },
+        splitLine: { lineStyle: { color: chartTheme.grid } },
       },
       series: [{
         type: "line",
         smooth: 0.35,
         showSymbol: false,
-        data: rows.map((row) => row.value ?? 0),
+        data: rows.map((item) => item.value ?? 0),
         lineStyle: { color: accent, width: 3 },
-        areaStyle: { color: "rgba(7,178,253,.20)" },
+        areaStyle: { color: "rgba(7,178,253,.22)" },
       }],
     };
   };
 
+  const chartTitle = (index: number) =>
+    config.layout.showChartTitles ? config.charts[index]?.title ?? "" : "";
+
   return (
-    <div className={`app-shell ${filtersOpen ? "filters-open" : ""}`}>
+    <div className={`app-shell ${filtersOpen ? "filters-open" : ""} ${railExpanded ? "rail-expanded" : "rail-collapsed"}`}>
       <header className="topbar">
-        <div className="title-wrap">
-          <div className="page-kicker">POWER BI WEB DASHBOARD</div>
-          <h1>{config.branding.name}</h1>
+        <div className="company-heading">
+          <span className="company-logo company-logo-placeholder" aria-hidden="true" />
+          <div className={`title-wrap ${config.layout.showHeaderText ? "" : "template-hidden"}`}>
+            <div className="page-kicker">{config.branding.subtitle || "Dashboard"}</div>
+            <h1>{config.branding.name}</h1>
+          </div>
         </div>
 
-        <div className="brand-spacer" aria-hidden="true" />
+        <div className="brand-center" aria-hidden="true" />
 
         <div className="topbar-meta">
-          <div className={`data-source-status ${status.powerBiConfigured ? "" : "unavailable"}`}>
-            <span className="status-dot" />
-            {status.powerBiConfigured ? "Power BI configurado" : "Configuração pendente"}
+          <div className="updated template-hidden" aria-hidden="true">
+            <span>Atualizado em</span>
+            <strong>00/00/0000 00:00</strong>
           </div>
         </div>
       </header>
@@ -315,45 +428,65 @@ export default function App() {
       <div className="workspace">
         {!filtersOpen && (
           <aside className="nav-rail" aria-label="Navegação">
-            <button className="rail-button rail-home-button" type="button" aria-label="Visão geral" title="Visão geral">
-              <GridIcon />
-            </button>
-            <span className="rail-divider" />
             <button
-              className="rail-button"
+              className="rail-button rail-brand-button"
               type="button"
-              aria-label="Filtros"
-              title="Filtros"
-              onClick={() => setFiltersOpen(true)}
+              aria-label={railExpanded ? "Recolher atalhos" : "Expandir atalhos"}
+              aria-expanded={railExpanded}
+              title={railExpanded ? "Recolher atalhos" : "Expandir atalhos"}
+              onClick={() => setRailExpanded((current) => !current)}
             >
-              <FilterIcon />
+              <span className="hamburger-icon" aria-hidden="true"><i /><i /><i /></span>
             </button>
-            <span className="rail-divider" />
-            <button
-              className="rail-button theme-button"
-              type="button"
-              aria-label={theme === "light" ? "Ativar tema escuro" : "Ativar tema claro"}
-              title={theme === "light" ? "Tema escuro" : "Tema claro"}
-              onClick={() => setTheme((current) => current === "light" ? "dark" : "light")}
-            >
-              {theme === "light" ? <MoonIcon /> : <SunIcon />}
-            </button>
+
+            <div className="rail-secondary-actions" aria-hidden={!railExpanded}>
+              <span className="rail-divider" />
+              <button
+                className="rail-button rail-blue-button navigation-rail-button"
+                type="button"
+                tabIndex={railExpanded ? 0 : -1}
+                aria-label="Páginas do dashboard"
+                title="Páginas"
+                onClick={() => setMenuOpen(true)}
+              >
+                <span className="navigation-icon"><NavigationIcon /></span>
+              </button>
+              <span className="rail-divider" />
+              <button
+                className="rail-button rail-blue-button filter-rail-button"
+                type="button"
+                tabIndex={railExpanded ? 0 : -1}
+                aria-label="Filtros"
+                title="Filtros"
+                onClick={() => setFiltersOpen(true)}
+              >
+                <span className="funnel-icon" aria-hidden="true" />
+                {filterCount > 0 && <span className="filter-count">{filterCount}</span>}
+              </button>
+              <span className="rail-divider" />
+              <button
+                className="rail-button theme-rail-button"
+                type="button"
+                tabIndex={railExpanded ? 0 : -1}
+                aria-label={theme === "light" ? "Ativar tema escuro" : "Ativar tema claro"}
+                title={theme === "light" ? "Tema escuro" : "Tema claro"}
+                onClick={() => setTheme((current) => current === "light" ? "dark" : "light")}
+              >
+                <span className="theme-icon">
+                  {theme === "light" ? <MoonIcon /> : <SunIcon />}
+                </span>
+              </button>
+            </div>
           </aside>
         )}
 
-        <aside className="filter-sidebar" aria-label="Filtros" aria-hidden={!filtersOpen}>
-          <div className="filter-header">
-            <div className="filter-title-icon"><FilterIcon /></div>
-            <div>
-              <h2>Filtros</h2>
-              <p>Refine a visão do dashboard</p>
-            </div>
-            <button className="collapse-filter" type="button" onClick={() => setFiltersOpen(false)} aria-label="Fechar filtros">‹</button>
-          </div>
-          <div className="filter-body">
-            <Filters config={config} value={filters} onChange={setFilters} />
-          </div>
-        </aside>
+        <FilterSidebar
+          open={filtersOpen}
+          onClose={() => setFiltersOpen(false)}
+          config={config}
+          value={filters}
+          onApply={setFilters}
+        />
 
         <main className="dashboard-area">
           {message && (
@@ -384,52 +517,137 @@ export default function App() {
           {status.dashboardConfigured && (
             <>
               <section className="section-head">
-                <div>
+                <div className={textHidden ? "template-hidden" : ""}>
                   <span className="eyebrow">INDICADORES</span>
                   <h2>Resumo do período</h2>
                 </div>
               </section>
 
               <section className="summary-grid" aria-label="Indicadores principais">
-                {Array.from({ length: cardSlotCount }, (_, index) => {
-                  const card = config.cards[index];
-                  return (
-                    <MetricSlot
-                      key={card?.id ?? `empty-card-${index}`}
-                      title={card?.title}
-                      value={card ? formatValue(cards.get(card.id) ?? null, card.format) : "—"}
-                      showTitle={config.layout.showCardTitles}
-                    />
-                  );
-                })}
+                <MetricGroup title={cardAt(0).title} headline={cardAt(0).value} metrics={[metric(1), metric(2)]} />
+                <MetricGroup title={cardAt(3).title} headline={cardAt(3).value} metrics={[metric(4), metric(5), metric(6)]} />
+                <MetricGroup title={cardAt(7).title} headline={cardAt(7).value} metrics={[metric(8), metric(9)]} />
+                <MetricGroup title={cardAt(10).title} headline={cardAt(10).value} metrics={[metric(11), metric(12)]} />
               </section>
 
               <section className="charts-grid">
-                {Array.from({ length: chartSlotCount }, (_, index) => {
-                  const chart = config.charts[index];
-                  return (
-                    <ChartPanel
-                      key={chart?.id ?? `empty-chart-${index}`}
-                      title={chart?.title}
-                      option={buildChartOption(index)}
-                    />
-                  );
-                })}
+                {[0, 1, 2].map((index) => (
+                  <ChartPanel
+                    key={config.charts[index]?.id ?? `chart-slot-${index}`}
+                    kicker={chartTitle(index)}
+                    title={chartTitle(index)}
+                    hiddenText={!config.layout.showChartTitles}
+                  >
+                    <EChart option={buildChartOption(index)} className="dashboard-chart" />
+                  </ChartPanel>
+                ))}
               </section>
 
               <section className="history-card">
                 <div className="history-header">
-                  <div>
+                  <div className={textHidden ? "template-hidden" : ""}>
                     <span className="panel-kicker">DETALHAMENTO</span>
                     <h2>Histórico</h2>
                   </div>
+                  <div className="history-header-actions">
+                    <GranularitySwitch
+                      value={historyGranularity}
+                      onChange={setHistoryGranularity}
+                      hidden={textHidden}
+                    />
+                    <div className={`history-legend ${textHidden ? "template-hidden" : ""}`}>
+                      <span /> período selecionado
+                    </div>
+                    <button
+                      className="focus-table-button"
+                      type="button"
+                      aria-label="Abrir tabela em modo foco"
+                      title="Modo foco"
+                      onClick={() => setHistoryFocusOpen(true)}
+                    >
+                      <FocusIcon />
+                    </button>
+                  </div>
                 </div>
-                <div className="history-placeholder">—</div>
+                <div className="detail-table-wrap detail-table-wrap-empty" aria-hidden="true" />
               </section>
             </>
           )}
         </main>
       </div>
+
+      {historyFocusOpen && (
+        <div className="focus-table-backdrop" role="presentation" onMouseDown={() => setHistoryFocusOpen(false)}>
+          <section
+            className="focus-table-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="focusTableTitle"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="focus-table-head">
+              <div className={textHidden ? "template-hidden" : ""}>
+                <span className="eyebrow">DETALHAMENTO</span>
+                <h2 id="focusTableTitle">Histórico</h2>
+                <p>Modo foco para análise da tabela.</p>
+              </div>
+              <div className="focus-table-head-actions">
+                <GranularitySwitch
+                  value={historyGranularity}
+                  onChange={setHistoryGranularity}
+                  compact
+                  hidden={textHidden}
+                />
+                <button
+                  className="focus-table-close"
+                  type="button"
+                  onClick={() => setHistoryFocusOpen(false)}
+                  aria-label="Fechar modo foco"
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+            <div className="focus-table-content">
+              <div className="detail-table-wrap detail-table-wrap-empty" aria-hidden="true" />
+            </div>
+          </section>
+        </div>
+      )}
+
+      {menuOpen && (
+        <div className="page-menu-backdrop" role="presentation" onMouseDown={() => setMenuOpen(false)}>
+          <section
+            className="page-menu-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pageMenuTitle"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="page-menu-head">
+              <div className={textHidden ? "template-hidden" : ""}>
+                <span className="eyebrow">NAVEGAÇÃO</span>
+                <h2 id="pageMenuTitle">Páginas do dashboard</h2>
+                <p>Escolha a visão que deseja abrir.</p>
+              </div>
+              <button className="page-menu-close" type="button" onClick={() => setMenuOpen(false)} aria-label="Fechar">×</button>
+            </div>
+
+            <div className="page-menu-grid">
+              <button className="page-menu-option active" type="button" onClick={() => setMenuOpen(false)}>
+                <span className={`page-menu-index ${textHidden ? "template-hidden" : ""}`}>01</span>
+                <span className={`page-menu-copy ${textHidden ? "template-hidden" : ""}`}>
+                  <strong>Visão Geral</strong>
+                  <small>Página atual</small>
+                </span>
+                <span className="page-menu-arrow">›</span>
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+
+      <div className="mobile-filter-backdrop" onClick={() => setFiltersOpen(false)} />
     </div>
   );
 }
