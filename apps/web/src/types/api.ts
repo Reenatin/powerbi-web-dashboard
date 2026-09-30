@@ -4,7 +4,12 @@ export type ChartType = "bar" | "line" | "pie";
 
 export type PublicConfig = {
   branding: { name: string; subtitle?: string; accent?: string };
-  layout: { showCardTitles: boolean };
+  layout: {
+    showCardTitles: boolean;
+    showChartTitles: boolean;
+    showSectionTitles: boolean;
+    showHeaderText: boolean;
+  };
   filters: { id: string; label: string; type: FilterType }[];
   cards: { id: string; title: string; format: ValueFormat }[];
   charts: { id: string; title: string; type: ChartType }[];
