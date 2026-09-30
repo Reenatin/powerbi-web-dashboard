@@ -4,6 +4,9 @@
     "subtitle": "Bring your own semantic model",
     "accent": "#0ea5e9"
   },
+  "layout": {
+    "showCardTitles": false
+  },
   "filters": [],
   "cards": [],
   "charts": []
