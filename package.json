@@ -12,7 +12,8 @@
     "build": "npm run build -w apps/api && npm run build -w apps/web",
     "typecheck": "npm run typecheck -w apps/api && npm run typecheck -w apps/web",
     "start": "npm run start -w apps/api",
-    "doctor": "node scripts/doctor.mjs"
+    "doctor": "node scripts/doctor.mjs",
+    "list-models": "npm run list-models -w apps/api"
   },
   "devDependencies": {
     "concurrently": "^9.2.1"

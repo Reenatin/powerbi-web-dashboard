@@ -19,10 +19,18 @@ const schema = z.object({
 
 export const env = schema.parse(process.env);
 
-export const powerBiConfigured = Boolean(
+export const entraConfigured = Boolean(
   env.TENANT_ID &&
   env.CLIENT_ID &&
-  env.CLIENT_SECRET &&
-  env.POWERBI_WORKSPACE_ID &&
+  env.CLIENT_SECRET
+);
+
+export const workspaceConfigured = Boolean(
+  entraConfigured &&
+  env.POWERBI_WORKSPACE_ID
+);
+
+export const powerBiConfigured = Boolean(
+  workspaceConfigured &&
   env.POWERBI_DATASET_ID
 );

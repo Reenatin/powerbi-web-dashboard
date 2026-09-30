@@ -158,3 +158,17 @@ Os instaladores Windows, Linux e macOS devem manter comportamento equivalente:
 - executar `npm install` e `npm run doctor`.
 
 Ao alterar um bootstrap, avalie se a mesma mudança deve ser aplicada aos outros sistemas operacionais.
+
+
+## Descoberta de Semantic Models
+
+Se o usuário souber o Workspace ID, mas não souber o Dataset ID, não peça para adivinhar ou extrair de URL.
+
+Oriente o comando adequado:
+
+- Windows: `list-models-windows.cmd`
+- Linux: `./list-models-linux.sh`
+- macOS: `./list-models-macos.command`
+- com npm global: `npm run list-models`
+
+Esse comando usa apenas Tenant/Client/Secret + Workspace ID para listar os Semantic Models acessíveis e mostrar seus Dataset IDs.

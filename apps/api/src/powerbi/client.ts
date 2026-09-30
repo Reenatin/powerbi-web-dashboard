@@ -1,5 +1,5 @@
 import { ConfidentialClientApplication } from "@azure/msal-node";
-import { env, powerBiConfigured } from "../config.js";
+import { env, entraConfigured } from "../config.js";
 
 let cachedToken: { value: string; expiresAt: number } | null = null;
 
@@ -14,8 +14,8 @@ function normalizeRow(row: Record<string, unknown>): Record<string, unknown> {
 }
 
 export async function getAccessToken(): Promise<string> {
-  if (!powerBiConfigured || !env.TENANT_ID || !env.CLIENT_ID || !env.CLIENT_SECRET) {
-    throw new Error("Power BI is not configured. Fill the required values in .env.");
+  if (!entraConfigured || !env.TENANT_ID || !env.CLIENT_ID || !env.CLIENT_SECRET) {
+    throw new Error("Microsoft Entra ID is not configured. Fill TENANT_ID, CLIENT_ID and CLIENT_SECRET in .env.");
   }
 
   if (cachedToken && cachedToken.expiresAt > Date.now() + 60_000) return cachedToken.value;
@@ -42,23 +42,15 @@ export async function getAccessToken(): Promise<string> {
   return cachedToken.value;
 }
 
-export async function executeDax(dax: string): Promise<Record<string, unknown>[]> {
-  if (!env.POWERBI_WORKSPACE_ID || !env.POWERBI_DATASET_ID) {
-    throw new Error("POWERBI_WORKSPACE_ID and POWERBI_DATASET_ID are required.");
-  }
-
+async function powerBiRequest<T>(url: string, init: RequestInit = {}): Promise<T> {
   const token = await getAccessToken();
-  const url = `https://api.powerbi.com/v1.0/myorg/groups/${env.POWERBI_WORKSPACE_ID}/datasets/${env.POWERBI_DATASET_ID}/executeQueries`;
   const response = await fetch(url, {
-    method: "POST",
+    ...init,
     headers: {
       Authorization: `Bearer ${token}`,
-      "Content-Type": "application/json",
+      ...(init.body ? { "Content-Type": "application/json" } : {}),
+      ...(init.headers ?? {}),
     },
-    body: JSON.stringify({
-      queries: [{ query: dax }],
-      serializerSettings: { includeNulls: true },
-    }),
   });
 
   const text = await response.text();
@@ -67,9 +59,45 @@ export async function executeDax(dax: string): Promise<Record<string, unknown>[]
 
   if (!response.ok) {
     const code = json?.error?.code ?? "PowerBIError";
-    const detail = json?.error?.["pbi.error"]?.details?.[0]?.detail?.value ?? text;
+    const detail = json?.error?.["pbi.error"]?.details?.[0]?.detail?.value ?? json?.error?.message ?? text;
     throw new Error(`${code} (${response.status}): ${detail}`);
   }
+
+  return json as T;
+}
+
+export type PowerBiDataset = {
+  id: string;
+  name: string;
+  configuredBy?: string;
+  isRefreshable?: boolean;
+  isOnPremisesDataGatewayOverrideEnabled?: boolean;
+  targetStorageMode?: string;
+};
+
+export async function listWorkspaceDatasets(): Promise<PowerBiDataset[]> {
+  if (!env.POWERBI_WORKSPACE_ID) {
+    throw new Error("POWERBI_WORKSPACE_ID is required to list semantic models.");
+  }
+
+  const url = `https://api.powerbi.com/v1.0/myorg/groups/${env.POWERBI_WORKSPACE_ID}/datasets`;
+  const result = await powerBiRequest<{ value?: PowerBiDataset[] }>(url);
+  return result.value ?? [];
+}
+
+export async function executeDax(dax: string): Promise<Record<string, unknown>[]> {
+  if (!env.POWERBI_WORKSPACE_ID || !env.POWERBI_DATASET_ID) {
+    throw new Error("POWERBI_WORKSPACE_ID and POWERBI_DATASET_ID are required.");
+  }
+
+  const url = `https://api.powerbi.com/v1.0/myorg/groups/${env.POWERBI_WORKSPACE_ID}/datasets/${env.POWERBI_DATASET_ID}/executeQueries`;
+  const json = await powerBiRequest<any>(url, {
+    method: "POST",
+    body: JSON.stringify({
+      queries: [{ query: dax }],
+      serializerSettings: { includeNulls: true },
+    }),
+  });
 
   const result = json?.results?.[0];
   if (result?.error) throw new Error(`${result.error.code ?? "DAXError"}: ${result.error.message ?? "Unknown DAX error"}`);

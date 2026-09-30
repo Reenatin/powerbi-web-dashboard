@@ -203,6 +203,36 @@ Os identificadores de tabela/campo e medidas acima são apenas exemplos. Use os 
 - O browser não envia DAX arbitrário.
 - Workspace e Dataset ID ficam no servidor.
 
+## Descobrir o Dataset ID
+
+Depois de preencher `TENANT_ID`, `CLIENT_ID`, `CLIENT_SECRET` e `POWERBI_WORKSPACE_ID`, você pode listar os Semantic Models acessíveis naquele workspace.
+
+### Windows
+
+```text
+list-models-windows.cmd
+```
+
+### Linux
+
+```bash
+./list-models-linux.sh
+```
+
+### macOS
+
+```bash
+./list-models-macos.command
+```
+
+Ou, se `npm` estiver disponível no PATH:
+
+```bash
+npm run list-models
+```
+
+O comando mostra o nome e o `Dataset ID` de cada Semantic Model encontrado. Depois copie o ID desejado para `.env` em `POWERBI_DATASET_ID`.
+
 ## Testar conexão
 
 Na interface existe o botão **Test connection**. Ele valida autenticação e uma consulta mínima via `executeQueries`.
