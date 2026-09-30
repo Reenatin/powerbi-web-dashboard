@@ -35,6 +35,9 @@ export type DashboardConfig = {
   };
   layout?: {
     showCardTitles?: boolean;
+    showChartTitles?: boolean;
+    showSectionTitles?: boolean;
+    showHeaderText?: boolean;
   };
   filters: DashboardFilterConfig[];
   cards: DashboardCardConfig[];
