@@ -189,8 +189,6 @@ export default function App() {
       .then(([nextStatus, nextConfig]) => {
         setStatus(nextStatus);
         setConfig(nextConfig);
-        document.documentElement.style.setProperty("--accent", nextConfig.branding.accent ?? "#07b2fd");
-        document.documentElement.style.setProperty("--accent-strong", nextConfig.branding.accent ?? "#079edc");
       })
       .catch((reason) => setError(reason instanceof Error ? reason.message : String(reason)));
   }, []);
@@ -248,7 +246,7 @@ export default function App() {
 
   const message = setupMessage(status);
   const filterCount = activeFilterCount(filters);
-  const accent = config.branding.accent ?? "#07b2fd";
+  const accent = "#07b2fd";
   const textHidden = !config.layout.showSectionTitles;
 
   const cardAt = (index: number) => {
